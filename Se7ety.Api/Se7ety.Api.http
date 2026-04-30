@@ -1,0 +1,36 @@
+@Se7ety.Api_HostAddress = http://localhost:5071
+
+GET {{Se7ety.Api_HostAddress}}/api/health
+Accept: application/json
+
+###
+
+POST {{Se7ety.Api_HostAddress}}/api/auth/patient/register
+Content-Type: application/json
+
+{
+  "email": "patient@example.com",
+  "password": "P@ssword123"
+}
+
+###
+
+POST {{Se7ety.Api_HostAddress}}/api/auth/doctor/register
+Content-Type: application/json
+
+{
+  "email": "doctor@example.com",
+  "password": "P@ssword123"
+}
+
+###
+
+POST {{Se7ety.Api_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "patient@example.com",
+  "password": "P@ssword123"
+}
+
+###
