@@ -19,41 +19,24 @@ using Se7ety.Api.Services.Interfaces;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// =====================
-// 🔥 PORT FIX (IMPORTANT FOR RENDER)
-// =====================
-var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
-builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
-
-// =====================
-// Database
-// =====================
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? throw new InvalidOperationException("Connection string is not configured.");
+    ?? throw new InvalidOperationException("Connection string 'DefaultConnection' is not configured.");
 
 var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
     ?? throw new InvalidOperationException("JWT options are not configured.");
+
+if (string.IsNullOrWhiteSpace(jwtOptions.Key) ||
+    string.IsNullOrWhiteSpace(jwtOptions.Issuer) ||
+    string.IsNullOrWhiteSpace(jwtOptions.Audience))
+{
+    throw new InvalidOperationException("JWT issuer, audience, and key must be configured.");
+}
 
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
 
 builder.Services.AddControllers();
-
-// =====================
-// CORS (🔥 مهم لـ Flutter)
-// =====================
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("AllowAll",
-        policy =>
-        {
-            policy.AllowAnyOrigin()
-                  .AllowAnyHeader()
-                  .AllowAnyMethod();
-        });
-});
-
 builder.Services.Configure<ApiBehaviorOptions>(options =>
 {
     options.InvalidModelStateResponseFactory = context =>
@@ -76,74 +59,86 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
 
 builder.Services.AddOpenApi();
 builder.Services.AddEndpointsApiExplorer();
-
 builder.Services.AddSwaggerGen(options =>
 {
     options.SwaggerDoc("v1", new OpenApiInfo
     {
-        Title = "Se7ety API",
+        Title = "Se7ety Doctor Appointment Booking API",
         Version = "v1"
     });
-});
 
-// DB
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Description = "Enter JWT token as: Bearer {token}",
+        Name = "Authorization",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT"
+    });
+
+});
+builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
+
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(connectionString));
 
-// Auth
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-.AddJwtBearer(options =>
-{
-    options.TokenValidationParameters = new TokenValidationParameters
-    {
-        ValidateIssuer = true,
-        ValidateAudience = true,
-        ValidateLifetime = true,
-        ValidateIssuerSigningKey = true,
-        ValidIssuer = jwtOptions.Issuer,
-        ValidAudience = jwtOptions.Audience,
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.Key)),
-        ClockSkew = TimeSpan.Zero
-    };
-});
-
-builder.Services.AddAuthorization();
-
-// Services (زي ما هي عندك)
 builder.Services.AddAutoMapper(_ => { }, typeof(ApplicationMappingProfile).Assembly);
 builder.Services.AddHttpContextAccessor();
 
+builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
+builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+
+builder.Services.AddScoped<IHealthService, HealthService>();
+builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+builder.Services.AddScoped<IFileStorageService, FileStorageService>();
+builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IProfileService, ProfileService>();
 builder.Services.AddScoped<IDoctorService, DoctorService>();
 builder.Services.AddScoped<IAppointmentService, AppointmentService>();
+builder.Services.AddScoped<IRatingService, RatingService>();
+builder.Services.AddScoped<ISettingsService, SettingsService>();
+
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = jwtOptions.Issuer,
+            ValidAudience = jwtOptions.Audience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.Key)),
+            ClockSkew = TimeSpan.Zero
+        };
+    });
+
+builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
-// =====================
-// Middleware order (IMPORTANT)
-// =====================
-app.UseMiddleware<ErrorHandlingMiddleware>();
-
-app.UseCors("AllowAll");
-
-app.UseAuthentication();
-app.UseAuthorization();
-
-// Swagger
 if (app.Environment.IsDevelopment())
 {
+    app.MapOpenApi();
+    app.MapScalarApiReference();
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-// مهم: ما تستخدمش HTTPS redirect في Render
-// app.UseHttpsRedirection();
+app.MapGet("/", () => Results.Redirect("/scalar"));
 
+app.UseHttpsRedirection();
 app.UseStaticFiles();
+app.UseMiddleware<ErrorHandlingMiddleware>();
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapControllers();
-
-// Root
-app.MapGet("/", () => Results.Ok("Se7ety API is running 🚀"));
 
 app.Run();
