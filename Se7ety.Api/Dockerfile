@@ -1,27 +1,25 @@
 # =========================
-# Stage 1: Build
+# Build Stage
 # =========================
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
-# نسخ ملفات المشروع
+# نسخ كل المشروع
 COPY . .
 
-# Restore dependencies
+# Restore
 RUN dotnet restore
 
 # Publish (Release)
 RUN dotnet publish -c Release -o /app/publish
 
 # =========================
-# Stage 2: Runtime
+# Runtime Stage
 # =========================
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 
-# نسخ الناتج من مرحلة البناء
 COPY --from=build /app/publish .
 
-# تشغيل المشروع
 # ⚠️ غيّر اسم الـ DLL حسب مشروعك
 ENTRYPOINT ["dotnet", "Se7ety.Api.dll"]
